@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard · SAD Usina Alcar</title><link rel="icon" href="data:,"><link rel="stylesheet" href="dashboard/tokens.css"><link rel="stylesheet" href="css/chat-consulta.css"></head><body>
+<header class="topo"><div class="wrap"><h1>Dashboard · Suprimentos da Usina Alcar</h1><p>Seis perguntas para apoiar a decisão · dados fictícios</p><nav class="navegacao" aria-label="Navegação principal"><a href="index.html">Home</a><a href="compras.html">Compras</a><a href="decisoes.html">Decisões</a><a href="dashboard.html" aria-current="page">Dashboard</a></nav></div></header>
+<div id="loading" class="wrap loading" role="status">Carregando contrato de dados…</div>
+<div id="filters" class="filters" hidden></div><main id="dashboard" class="wrap" hidden></main>
+<dialog id="detail" aria-label="Detalhe do item"></dialog><dialog id="decision" aria-labelledby="decision-title"></dialog>
+<div id="tooltip" class="tooltip" role="tooltip" hidden></div><div id="message" class="sr-only" role="status" aria-live="polite"></div>
+<section id="dg-agente" role="region" aria-labelledby="t6" hidden>
+  <div class="dc">
+    <div class="cab-chat">
+      <div class="chat-perfil">
+        <div class="avatar-robo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="10" rx="2"/>
+            <circle cx="12" cy="5" r="2"/>
+            <path d="M12 7v4"/>
+            <line x1="8" y1="16" x2="8.01" y2="16"/>
+            <line x1="16" y1="16" x2="16.01" y2="16"/>
+          </svg>
+          <span class="avatar-dot"></span>
+        </div>
+        <div class="chat-info">
+          <h3 id="t6">Agente IA · Usina Alcar</h3>
+          <span id="status-agente">online</span>
+        </div>
+      </div>
+      <button class="btn-fecha-chat" id="fx-agente" aria-label="Fechar conversa (Esc)">✕</button>
+    </div>
+    <div class="chat" id="chat" aria-live="polite" tabindex="0"></div>
+    <div class="sugs" id="sugs" hidden></div>
+    <form class="form-chat" id="form-chat">
+      <button class="btn-toggle-sugs" id="bt-toggle-sugs" type="button" title="Perguntas sugeridas" aria-label="Ver perguntas sugeridas">💡</button>
+      <input id="q" aria-label="Mensagem para o agente" placeholder="Mensagem..." autocomplete="off">
+      <button class="btn-enviar-chat" type="submit" aria-label="Enviar mensagem">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+</section>
+<button class="agente-abrir" id="bt-agente" aria-expanded="false" aria-controls="dg-agente" title="Consultar agente de IA" aria-label="Consultar agente de IA">
+  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="11" width="18" height="10" rx="2"/>
+    <circle cx="12" cy="5" r="2"/>
+    <path d="M12 7v4"/>
+    <line x1="8" y1="16" x2="8.01" y2="16"/>
+    <line x1="16" y1="16" x2="16.01" y2="16"/>
+  </svg>
+  <span class="status-dot-fab" aria-hidden="true"></span>
+</button>
+<footer class="wrap site-footer">Protótipo acadêmico · Usina Alcar é fictícia · Dashboard independente das telas anteriores.</footer><script src="dashboard/iniciar.js"></script><script src="js/cabecalho.js"></script><script src="js/agente-engine.js"></script></body></html>

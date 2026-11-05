@@ -1,0 +1,113 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const os=require('node:os');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
+const server=require('../serve.cjs');
+(async()=>{
+  let browser,temp;
+  try{
+    await new Promise(r=>server.listen(0,'127.0.0.1',r));
+    browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
+    const ctx=await browser.newContext(),page=await ctx.newPage({viewport:{width:1366,height:900}}),errors=[],requests=[];
+    page.on('pageerror',e=>errors.push(e.message));
+    page.on('console',m=>{if(['error','warning'].includes(m.type()))errors.push(m.text());});
+    page.on('request',r=>requests.push(r.url()));
+    const url=`http://127.0.0.1:${server.address().port}/dashboard.html`;
+    await page.goto(url);await page.locator('[data-kpi=E1]').waitFor();
+    assert.equal(await page.locator('.panel[id^=painel-]').count(),6);
+    for(const [k,v]of Object.entries({E1:95.5,E2:49.2,E3:22.44,O1:69.62,O2:2.89,O3:11.5}))assert.equal(Number(await page.locator(`[data-kpi=${k}]`).getAttribute('data-value')),v);
+    assert.match(await page.locator('#g23').innerText(),/58,8/);
+    assert.match(await page.locator('#g64').innerText(),/32,4/);
+    assert.equal(requests.filter(r=>r.endsWith('dados_alcar.json')).length,1);
+    assert.equal(requests.some(r=>!r.startsWith('http://127.0.0.1:')),false);
+    for(const width of [390,820,1366]){
+      await page.setViewportSize({width,height:900});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow ${width}`);
+    }
+    await page.selectOption('#fam','ROL');
+    assert.equal(await page.locator('#fam').inputValue(),'ROL');
+    assert.equal(await page.locator('#g31 [data-selected=true]').count(),1);
+    assert.equal(await page.locator('#g32 [data-selected=true]').count(),1);
+    await page.locator('.panel-nav a').first().click();
+    assert.match(page.url(),/fam=ROL/);
+    assert.match(await page.locator('#g22 .scope').innerText(),/Família.*não se aplica/);
+    await page.selectOption('#forn','0000100001');
+    assert.match(await page.locator('#g21 .scope').innerText(),/Fornecedor/);
+    await page.locator('#reset').click();
+    await page.selectOption('#janela','ANTERIOR');
+    assert.equal(Number(await page.locator('[data-kpi=E1]').getAttribute('data-value')),95.92);
+    await page.locator('#reset').click();
+    await page.selectOption('#agricola','entre');
+    assert.match(await page.locator('#g21 .visual').innerText(),/nenhum item/);
+    assert.doesNotMatch(await page.locator('#dashboard').innerText(),/NaN|undefined/);
+    await page.locator('#reset').click();
+    await page.selectOption('#janela','ANO');
+    assert.equal(await page.locator('#g61 svg rect[fill="none"]').count(),2);
+    await page.locator('#reset').click();
+    assert.match(await page.locator('#g11-E3 circle[data-tip]').first().getAttribute('data-tip'),/média móvel.*n=\d+ pedidos/);
+    const climateRects=await page.locator('#g61 [data-sync]').evaluateAll(nodes=>nodes.map(n=>[Number(n.getAttribute('x')),Number(n.getAttribute('width'))]));
+    const consumptionRects=await page.locator('#g62 [data-sync]').evaluateAll(nodes=>nodes.map(n=>[Number(n.getAttribute('x')),Number(n.getAttribute('width'))]));
+    assert.equal(climateRects.length,consumptionRects.length);
+    climateRects.forEach((r,k)=>{assert.ok(Math.abs(r[0]-consumptionRects[k][0])<1e-8);assert.ok(Math.abs(r[1]-consumptionRects[k][1])<1e-8);});
+    await page.locator('#g61 [data-sync]').first().focus();
+    assert.match(await page.locator('#climate-cursor').innerText(),/Consumo total/);
+    await page.locator('#item').fill('não existe este item');await page.locator('#item').blur();
+    assert.match(await page.locator('#g41 .visual').innerText(),/nenhum item/);
+    await page.locator('#reset').click();
+    await page.locator('#g33 [data-page="1"]').focus();await page.keyboard.press('Enter');
+    assert.match(await page.locator('#g33 .pagination').innerText(),/Página 2/);
+    assert.equal(await page.locator('#g33 [data-page="1"]').evaluate(el=>el===document.activeElement),true);
+    await page.keyboard.press('Enter');
+    assert.match(await page.locator('#g33 .pagination').innerText(),/Página 3/);
+    assert.equal(await page.locator('#g33 [data-page="-1"]').evaluate(el=>el===document.activeElement),true);
+    await page.locator('#g51 [data-ind=O1]').focus();await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#g51 [data-ind=O1]').evaluate(el=>el===document.activeElement),true);
+    await page.locator('#indicador').focus();await page.locator('#indicador').selectOption('O2');
+    assert.equal(await page.locator('#indicador').evaluate(el=>el===document.activeElement),true);
+    await page.locator('#g31 [data-fam=ROL]').focus();await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#fam').inputValue(),'ROL');
+    assert.equal(await page.locator('#g31 [data-fam=ROL]').evaluate(el=>el===document.activeElement),true);
+    await page.locator('#reset').click();
+    const tooltipMark=page.locator('#g21 [data-tip]').first();await tooltipMark.focus();
+    assert.equal(await page.locator('#tooltip').isVisible(),true,JSON.stringify(await page.evaluate(()=>({active:document.activeElement.outerHTML,tooltip:document.querySelector('#tooltip').outerHTML}))));
+    for(const id of await page.locator('[data-graph]').evaluateAll(nodes=>nodes.map(n=>n.id))){
+      await page.locator(`[data-table="${id}"]`).click();
+      assert.equal(await page.locator(`#${id}-table`).isVisible(),true);
+      await page.locator(`[data-table="${id}"]`).click();
+    }
+    const first=page.locator('#g33 [data-decision=ajustou]').first(),cod=await first.getAttribute('data-cod');
+    await first.click();await page.locator('#quantity').fill('7');await page.locator('#why').fill('Ajuste conforme planejamento da manutenção');
+    await page.locator('#decision-form button[type=submit]').click();
+    assert.equal(await page.locator(`#g33 [data-decision=ajustou][data-cod="${cod}"]`).evaluate(el=>el===document.activeElement),true);
+    assert.match(await page.locator('#decision-log').innerText(),/ajustou/);
+    assert.match(await page.locator('#decisoes-prazo').innerText(),/decididas no prazo/);
+    await page.reload();await page.locator('[data-kpi=E1]').waitFor();
+    assert.match(await page.locator('#decision-log').innerText(),/ajustou/);
+    await page.locator('#g33 [data-detail]').first().click();
+    assert.equal(await page.locator('#detail').isVisible(),true);
+    assert.match(await page.locator('#detail').innerText(),/SS = z/);
+    await page.keyboard.press('Escape');assert.equal(await page.locator('#detail').isVisible(),false);
+    temp=await fs.mkdtemp(path.join(os.tmpdir(),'alcar-dashboard-'));
+    for(const id of ['g21','g51','g33','g64','decision-log']){
+      const pending=page.waitForEvent('download');await page.locator(`[data-csv="${id}"]`).click();const download=await pending;
+      const file=path.join(temp,id+'.csv');await download.saveAs(file);assert.ok((await fs.readFile(file,'utf8')).includes(';'));
+    }
+    await page.setViewportSize({width:1366,height:900});await page.evaluate(()=>scrollTo(0,0));
+    const screenshotDir=process.env.SCREENSHOT_DIR;
+    if(screenshotDir){await fs.mkdir(screenshotDir,{recursive:true});await page.screenshot({path:path.join(screenshotDir,'dashboard-desktop.png')});for(const n of [1,5,3,2,4,6])await page.locator('#painel-'+n).screenshot({path:path.join(screenshotDir,`dashboard-painel-${n}.png`),style:'.filters{visibility:hidden}.tooltip{display:none}'});await page.setViewportSize({width:390,height:844});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(screenshotDir,'dashboard-mobile.png')});}
+    assert.deepEqual(errors,[]);
+    const blocked=await browser.newContext();await blocked.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('bloqueado','SecurityError');}});});
+    const p=await blocked.newPage();await p.goto(url);await p.locator('[data-kpi=E1]').waitFor();
+    await p.locator('#g33 [data-decision=aceitou]').first().click();await p.locator('#decision-form button[type=submit]').click();
+    assert.match(await p.locator('#decision-log').innerText(),/aceitou/);assert.match(await p.locator('#storage-status').innerText(),/somente em memória/);
+    const broken=await browser.newContext();await broken.route('**/dados_alcar.json',route=>route.fulfill({status:200,contentType:'application/json',body:'{}'}));
+    const b=await broken.newPage();await b.goto(url);await b.locator('#retry').waitFor();assert.match(await b.locator('#loading').innerText(),/Contrato inválido/);
+    const missingModule=await browser.newContext();
+    await missingModule.route('**/dashboard/app.mjs',route=>route.fulfill({status:404,contentType:'text/plain',body:'Arquivo não encontrado'}));
+    const missing=await missingModule.newPage();await missing.goto(url);
+    await missing.locator('#retry').waitFor({timeout:5000});
+    assert.match(await missing.locator('#loading').innerText(),/Não foi possível iniciar/);
+    console.log('OK: 6 painéis, valores do contrato, fonte única, filtros, 390/820/1366, tooltips/tabelas/CSV, decisões persistidas, gaveta, armazenamento bloqueado e erro de contrato.');
+  }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));if(temp)await fs.rm(temp,{recursive:true,force:true});}
+})().catch(e=>{console.error(e);process.exitCode=1;});

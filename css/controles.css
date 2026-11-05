@@ -1,0 +1,4 @@
+.seta-secao{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--borda);background:var(--branco);border-radius:8px;padding:5px;min-width:32px;min-height:32px;cursor:pointer;flex:none}
+.seta-secao svg{width:18px;height:18px;transition:transform .15s}
+.seta-secao[aria-expanded=false] svg{transform:rotate(-90deg)}
+@media(prefers-reduced-motion:reduce){.seta-secao svg{transition:none}}

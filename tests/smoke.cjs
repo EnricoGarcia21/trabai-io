@@ -1,0 +1,93 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
+const server = require('../serve.cjs');
+
+(async () => {
+  let browser, temp;
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const options = {headless:true};
+    if (process.env.CHROME_PATH) options.executablePath = process.env.CHROME_PATH;
+    browser = await chromium.launch(options);
+    const page = await browser.newPage({viewport:{width:1440,height:1000}});
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    await page.goto(base);
+    await page.selectOption('#f-fam', 'FIL');
+    await page.fill('#f-inicio', '2026-08-01');
+    await page.fill('#f-fim', '2026-09-30');
+    await page.locator('#f-fim').blur();
+    await page.getByRole('link', {name:'Compras', exact:true}).click();
+    assert.equal(await page.locator('#f-fam').inputValue(), 'FIL');
+    assert.equal(await page.locator('#f-inicio').inputValue(), '2026-08-01');
+    assert.equal(await page.locator('#f-fim').inputValue(), '2026-09-30');
+    const compra = page.locator('.compra:visible').first();
+    const id = await compra.getAttribute('data-id');
+    await compra.locator('[data-a=recusada]').click();
+    assert.equal(await page.locator('.compra:visible input.erro').count(), 1);
+    await compra.locator('[data-a=aceita]').click();
+    await page.getByRole('link', {name:'Decisões', exact:true}).click();
+    assert.match(await page.locator('#tb-log').innerText(), /Aceita pelo analista/);
+    await page.getByRole('link', {name:'Compras', exact:true}).click();
+    await page.selectOption('#perfil', 'compras');
+    await page.locator(`.compra[data-id="${id}"] [data-a=aprovada]`).click();
+    await page.getByRole('link', {name:'Decisões', exact:true}).click();
+    await page.reload();
+    assert.match(await page.locator('#tb-log').innerText(), /Aprovada/);
+    // A current decision must remain visible outside the consumption history.
+    await page.fill('#f-inicio', '2027-01-01');
+    await page.fill('#f-fim', '2027-02-01');
+    await page.locator('#f-fim').blur();
+    assert.match(await page.locator('#tb-log').innerText(), /Aprovada/);
+    await page.selectOption('#f-fam', 'ROL');
+    assert.doesNotMatch(await page.locator('#tb-log').innerText(), /Aprovada/);
+    await page.getByRole('link', {name:'Home', exact:true}).click();
+    assert.match(await page.locator('#ch-main').innerText(), /Nenhuma semana/);
+    await page.locator('#tb-main').click();
+    await page.locator('#bt-limpar').click();
+    assert.equal(await page.locator('#f-inicio').inputValue(), '2026-07-20');
+    await page.fill('#f-inicio', '2027-01-01');
+    await page.locator('#f-inicio').blur();
+    assert.equal(await page.locator('#f-fim').evaluate(e => e.validity.valid), false);
+    await page.locator('#bt-limpar').click();
+    for (const section of ['risco-conteudo', 'bench-conteudo']) {
+      await page.locator(`[data-recolher=${section}]`).click();
+      assert.equal(await page.locator('#' + section).isVisible(), false);
+      await page.locator(`[data-recolher=${section}]`).click();
+      assert.equal(await page.locator('#' + section).isVisible(), true);
+    }
+    await page.locator('#bt-mapa').click();
+    assert.equal(await page.locator('.mapa').isVisible(), true);
+    await page.locator('#bt-mapa').click();
+    assert.equal(await page.locator('.mapa').count(), 0);
+    await page.locator('#bt-agente').click();
+    await page.locator('#q').fill('Como calcular o estoque de segurança?');
+    await page.locator('#form-chat button').click();
+    await page.waitForFunction(() => document.querySelector('#chat').textContent.includes('SS ='));
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#dg-agente').isVisible(), false);
+    temp = await fs.mkdtemp(path.join(os.tmpdir(), 'alcar-test-'));
+    const pending = page.waitForEvent('download');
+    await page.locator('#bt-excel').click();
+    const download = await pending;
+    assert.equal(download.suggestedFilename(), 'consumo_alcar.xlsx');
+    const file = path.join(temp, 'consumo.xlsx');
+    await download.saveAs(file);
+    const bytes = await fs.readFile(file);
+    assert.equal(bytes.readUInt32LE(0), 0x04034b50);
+    assert.ok(bytes.includes(Buffer.from('xl/worksheets/sheet1.xml')));
+    await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.deepEqual(errors, []);
+    console.log('OK: filtros, datas, compras, decisões, persistência, modal, mapa, recolhimento, XLSX e layout móvel.');
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+    if (temp) await fs.rm(temp, {recursive:true, force:true});
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

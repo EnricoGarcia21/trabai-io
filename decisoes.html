@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Suprimentos – Usina Alcar (dados fictícios)</title>
+<link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/interface.css"><link rel="stylesheet" href="css/controles.css"><link rel="stylesheet" href="css/kpi-tooltips.css"><link rel="stylesheet" href="css/chat-consulta.css">
+</head>
+<body data-pagina="decisoes">
+
+<header class="topo">
+  <div class="wrap">
+    <div>
+      <h1>Painel de Suprimentos – Usina Alcar (dados fictícios)</h1>
+      <div class="sub">Sistema de Apoio à Decisão do almoxarifado · dados até 22/10/2026 · fonte: camada ouro simulada</div>
+    </div>
+    <div class="acoes">
+      <span class="pill" title="Todos os dados são simulados">● Dados fictícios</span>
+      <label>Perfil
+        <select id="perfil" aria-label="Perfil de acesso">
+          <option value="analista">Analista de almoxarifado/PCM</option>
+          <option value="compras">Setor de compras</option>
+          <option value="gestor">Gestor de suprimentos</option>
+        </select>
+      </label>
+      <button class="btn claro" id="bt-sobre">Governança e metodologia</button>
+    </div>
+  </div>
+<nav class="wrap navegacao" aria-label="Navegação principal"><a href="index.html" data-pagina="home">Home</a><a href="compras.html" data-pagina="compras">Compras</a><a href="decisoes.html" data-pagina="decisoes">Decisões</a><a href="dashboard.html">Dashboard</a></nav></header>
+
+<div class="filtros" role="region" aria-label="Filtros do painel">
+  <div class="wrap">
+    <div class="linha-filtros">
+      <div class="campo"><label for="f-fam">Tipo de item</label><select id="f-fam"></select></div>
+      <div class="campo"><label for="f-item">Item</label><input id="f-item" list="dl-itens" placeholder="Nome ou código" autocomplete="off"><datalist id="dl-itens"></datalist></div>
+      <div class="campo"><label for="f-forn">Fornecedor</label><select id="f-forn"></select></div>
+      <div class="campo"><label for="f-inicio">Data inicial (dd/mm/aaaa)</label><input id="f-inicio" type="date" required></div><div class="campo"><label for="f-fim">Data final (dd/mm/aaaa)</label><input id="f-fim" type="date" required></div>
+      <div class="campo"><label for="f-safra">Safra / entressafra</label>
+        <select id="f-safra">
+          <option value="">Safra e entressafra</option>
+          <option value="safra">Safra (abril a novembro)</option>
+          <option value="entre">Entressafra (jan. a mar.)</option>
+        </select></div>
+      <div class="campo"><label for="f-pad">Padrão de demanda</label>
+        <select id="f-pad">
+          <option value="">Todos</option><option>regular</option><option>intermitente</option><option>muito intermitente</option><option>sazonal</option>
+        </select></div>
+      <div class="campo"><label for="f-abc">Curva ABC</label>
+        <select id="f-abc"><option value="">Todas</option><option>A</option><option>B</option><option>C</option></select></div>
+    </div>
+    <div class="resumo-filtros">
+      <span id="res-filtros" class="num" aria-live="polite"></span>
+      <label class="nivel" title="Simulação: altera z do estoque de segurança e recalcula pontos de pedido e riscos">Nível de serviço alvo
+        <input type="range" id="f-nivel" min="85" max="99.5" step="0.5" value="95" aria-label="Nível de serviço alvo"><b id="v-nivel" class="num">95%</b>
+      </label>
+      <button class="btn peq" id="bt-limpar">Limpar filtros</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="aviso"><b>Protótipo v1.</b> Empresa, itens, fornecedores e tabelas são fictícios. O efeito do clima e da safra no consumo é uma hipótese embutida na simulação e não comprova nada sobre a usina. Os seis indicadores abaixo são provisórios, até a Matriz de Indicadores de 06/11.</div>
+
+  <section data-vista="home" class="kpis" id="kpis" aria-label="Indicadores"></section>
+
+  <section data-vista="home" class="cartao resumo-compras"><h2>Compras sugeridas</h2><p id="resumo-compras"></p><a class="btn pri" href="compras.html">Ver itens das compras sugeridas</a></section><div class="grade">
+    <section data-vista="home" class="cartao c-8" aria-labelledby="t1">
+      <div class="cab">
+        <h2 id="t1"><span class="n">1</span>Consumo real × previsto, por semana</h2>
+        <div class="ferr">
+          <div class="seg" role="group" aria-label="Unidade"><button data-m="un" aria-pressed="true">Unidades</button><button data-m="rs" aria-pressed="false">R$</button></div>
+          <button class="btn peq" id="bt-excel">Exportar Excel</button><button class="btn peq" id="tb-main">Ver tabela</button>
+        </div>
+      </div>
+      <div class="leg" id="leg-main"></div>
+      <div class="chart" id="ch-main"></div>
+      <p class="nota" id="nt-main"></p>
+    </section>
+
+    <section data-vista="home" class="cartao c-4 dest clima" aria-labelledby="t2">
+      <div class="cab" style="justify-content:space-between">
+        <h2 id="t2"><span class="n">2</span>Cenário climático</h2>
+        <button class="btn peq" id="bt-mapa" aria-pressed="false">Ver mapa</button><select id="sel-clima" aria-label="Semana de referência do cenário"></select>
+      </div>
+      <div id="clima-corpo"></div>
+    </section>
+
+    <section data-vista="home" class="cartao c-12" aria-labelledby="t3">
+      <div class="cab">
+        <h2 id="t3"><button class="seta-secao" data-recolher="risco-conteudo" data-titulo="Risco de ruptura por item" aria-expanded="true" aria-controls="risco-conteudo" aria-label="Recolher Risco de ruptura por item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="n">3</span>Risco de ruptura por item</h2>
+        <div class="ferr" id="chips-risco" role="group" aria-label="Filtro por risco"></div>
+      </div>
+      <div id="risco-conteudo"><p class="nota" style="margin:0 0 6px">Situação em 22/10/2026. Não depende do período escolhido. Clique em um item para ver o cálculo.</p>
+      <div class="rolar" style="max-height:470px;overflow:auto"><table id="tb-risco"></table></div>
+      <div style="margin-top:8px"><button class="btn peq" id="bt-mais">Mostrar mais</button> <span class="nota" id="nt-risco"></span></div>
+    </div></section>
+
+    <section data-vista="compras" class="cartao c-12" aria-labelledby="t4">
+      <div class="cab"><h2 id="t4"><span class="n">4</span>Compras sugeridas</h2><span class="nota" id="nt-compras"></span></div>
+      <div id="compras-corpo"></div>
+    </section>
+
+    <section data-vista="home" class="cartao c-12" aria-labelledby="t5">
+      <div class="cab"><h2 id="t5"><button class="seta-secao" data-recolher="bench-conteudo" data-titulo="Benchmarking e tendências" aria-expanded="true" aria-controls="bench-conteudo" aria-label="Recolher Benchmarking e tendências"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="n">5</span>Benchmarking e tendências</h2><span class="nota">Referências setoriais fictícias, a validar na Matriz de Indicadores.</span></div>
+      <div id="bench-conteudo"><div class="abas" role="tablist" id="abas">
+        <button role="tab" data-t="forn" aria-selected="true">Fornecedores</button>
+        <button role="tab" data-t="rup" aria-selected="false">Ruptura vs. referência</button>
+        <button role="tab" data-t="prev" aria-selected="false">Métodos de previsão</button>
+      </div>
+      <div id="bench-corpo"></div></div>
+    </section>
+
+        <section id="dg-agente" role="region" aria-labelledby="t6" hidden>
+      <div class="dc">
+        <div class="cab-chat">
+          <div class="chat-perfil">
+            <div class="avatar-robo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="10" rx="2"/>
+                <circle cx="12" cy="5" r="2"/>
+                <path d="M12 7v4"/>
+                <line x1="8" y1="16" x2="8.01" y2="16"/>
+                <line x1="16" y1="16" x2="16.01" y2="16"/>
+              </svg>
+              <span class="avatar-dot"></span>
+            </div>
+            <div class="chat-info">
+              <h3 id="t6">Agente IA · Usina Alcar</h3>
+              <span id="status-agente">online</span>
+            </div>
+          </div>
+          <button class="btn-fecha-chat" id="fx-agente" aria-label="Fechar conversa (Esc)">✕</button>
+        </div>
+        <div class="chat" id="chat" aria-live="polite" tabindex="0"></div>
+        <div class="sugs" id="sugs" hidden></div>
+        <form class="form-chat" id="form-chat">
+          <button class="btn-toggle-sugs" id="bt-toggle-sugs" type="button" title="Perguntas sugeridas" aria-label="Ver perguntas sugeridas">💡</button>
+      <input id="q" aria-label="Mensagem para o agente" placeholder="Mensagem..." autocomplete="off">
+          <button class="btn-enviar-chat" type="submit" aria-label="Enviar mensagem">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <section data-vista="decisoes" class="cartao c-12" aria-labelledby="t7">
+      <div class="cab"><h2 id="t7"><span class="n">7</span>Registro das decisões</h2>
+        <div class="ferr"><button class="btn peq" id="bt-csv">Exportar CSV</button><button class="btn peq" id="bt-zerar">Limpar</button></div></div>
+      <p class="nota">Os filtros de item são compartilhados com a Home. As datas selecionam semanas de consumo; compras e decisões mostram a situação atual dos itens, inclusive decisões feitas hoje.</p><p class="nota" style="margin:0 0 6px">Cada aceite, recusa ou aprovação grava a justificativa. É o registro que externaliza o conhecimento do analista (etapa de externalização do SECI).</p>
+      <div style="max-height:360px;overflow:auto"><table id="tb-log"></table></div>
+    </section>
+  </div>
+  <footer>Protótipo v1 · Projeto Integrador de Inteligência Organizacional · Usina Alcar é uma empresa fictícia · gerado com semente fixa, reprodutível.</footer>
+</main>
+
+<dialog id="dg-item" class="gaveta" aria-label="Detalhe do item"><div class="dc" id="dg-item-c"></div></dialog>
+<dialog id="dg-sobre" aria-label="Governança e metodologia"><div class="dc" id="dg-sobre-c"></div></dialog>
+<button class="agente-abrir" id="bt-agente" aria-expanded="false" aria-controls="dg-agente" title="Consultar agente de IA" aria-label="Consultar agente de IA">
+  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="11" width="18" height="10" rx="2"/>
+    <circle cx="12" cy="5" r="2"/>
+    <path d="M12 7v4"/>
+    <line x1="8" y1="16" x2="8.01" y2="16"/>
+    <line x1="16" y1="16" x2="16.01" y2="16"/>
+  </svg>
+  <span class="status-dot-fab" aria-hidden="true"></span>
+</button><div class="toast" id="toast" role="status"></div>
+
+<script src="js/dados.js"></script>
+<script src="js/app.js"></script><script src="js/interface.js"></script>
+<script src="js/cabecalho.js"></script><script src="js/agente-engine.js"></script></body>
+</html>

@@ -1,0 +1,10 @@
+.kpi .kpi-titulo{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.kpi-ajuda{display:inline-flex;flex:none;text-transform:none;letter-spacing:normal}
+.kpi-info{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid var(--cinza-2);border-radius:50%;background:var(--fundo);color:var(--cinza);font:700 14px Georgia,serif;cursor:help}
+.kpi-info:hover,.kpi-info[aria-expanded=true]{background:var(--cinza);color:#fff}
+.kpi-info:focus-visible{outline:3px solid var(--oliva);outline-offset:3px}
+.kpi-tooltip{position:fixed;z-index:100;display:block;box-sizing:border-box;width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:14px 16px;border:1px solid var(--borda);border-radius:10px;background:#fff;color:var(--cinza);box-shadow:0 6px 24px #080f0f33;font-size:13px;font-weight:400;line-height:1.5;text-align:left}
+.kpi-tooltip[hidden]{display:none}
+.kpi-tooltip strong,.kpi-tooltip b,.kpi-tooltip span{display:block}
+.kpi-tooltip strong{font-size:14px;margin-bottom:6px}
+.kpi-tooltip b{margin-top:9px;margin-bottom:3px}
