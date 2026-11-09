@@ -126,6 +126,59 @@
 .btn-fecha-chat:hover {
   opacity: 1;
 }
+.cab-chat-acoes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.btn-toggle-sugs-cab {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px;
+  line-height: 1;
+  opacity: 0.85;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.btn-toggle-sugs-cab:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+.btn-config-chat {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px;
+  line-height: 1;
+  opacity: 0.85;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+}
+.btn-config-chat:hover {
+  opacity: 1;
+  transform: rotate(45deg);
+}
+.status-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.tag-9router {
+  background: #25d366;
+  color: #0b3d1b;
+}
+.tag-local {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
 
 /* WhatsApp Messages Body */
 #dg-agente .chat {
@@ -394,12 +447,179 @@
 .lista-chat-itens li {
   margin: 5px 0;
 }
+
+/* Tabelas Markdown no Chat WhatsApp */
+.tabela-chat-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: 8px;
+  border: 1px solid var(--borda, #D5DAD7);
+  background: #ffffff;
+  scrollbar-width: thin;
+}
+.tabela-chat {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tabela-chat th, .tabela-chat td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid #eef2eb;
+  white-space: nowrap;
+}
+.tabela-chat th {
+  background: #f4f7ef;
+  color: #46524d;
+  font-weight: 700;
+}
+.tabela-chat tr:last-child td {
+  border-bottom: none;
+}
+.tabela-chat tr:hover td {
+  background: #f9fbf7;
+}
+
 .meta {
   font-size: 11px;
   color: #667781;
   border-top: 1px dashed rgba(0, 0, 0, 0.12);
   margin-top: 8px;
   padding-top: 4px;
+}
+
+/* Badges de Origem da Resposta */
+.badge-origem-9r {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #e7f7ed;
+  color: #0f5132;
+  border: 1px solid #badbcc;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 11px;
+}
+.badge-origem-local {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f4f7ef;
+  color: var(--oliva, #47682C);
+  border: 1px solid var(--borda, #D5DAD7);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* Modal de Configuração do 9Router */
+#dg-config-agente {
+  width: min(420px, 94vw);
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  padding: 0;
+  background: #ffffff;
+}
+#dg-config-agente::backdrop {
+  background: rgba(8, 15, 15, 0.5);
+  backdrop-filter: blur(2px);
+}
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--oliva, #47682C);
+  color: #fff;
+  padding: 12px 16px;
+}
+.config-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.config-fechar {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+}
+.config-corpo {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+}
+.config-status-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.config-status-card.online {
+  background: #e7f7ed;
+  color: #0f5132;
+  border: 1px solid #badbcc;
+}
+.config-status-card.offline {
+  background: #fff3cd;
+  color: #664d03;
+  border: 1px solid #ffecb5;
+}
+.config-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.config-campo label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #46524d;
+}
+.config-campo input, .config-campo select {
+  padding: 8px 10px;
+  border: 1px solid #d5dad7;
+  border-radius: 6px;
+  font-size: 12.5px;
+  width: 100%;
+}
+.config-acoes {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.btn-testar-9r {
+  background: #f0f2f5;
+  border: 1px solid #d1d7db;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+}
+.btn-salvar-9r {
+  background: var(--oliva, #47682C);
+  color: #fff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+}
+.btn-salvar-9r:hover {
+  filter: brightness(1.1);
 }
 
 @media(max-width:600px){

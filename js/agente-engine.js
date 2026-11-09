@@ -450,7 +450,373 @@
   }
 
   // ============================================================
-  // 4. INTERFACE E CONTROLES DO CHAT
+  // 4. INTEGRAÇÃO 9ROUTER (LLM GATEWAY) COM MINI-RAG & FALLBACK
+  // ============================================================
+  const DEFAULT_CONFIG_9R = {
+    modo: 'auto', // 'auto' (9Router com fallback local) | 'local' (apenas motor local)
+    endpoint: '/api/chat',
+    directEndpoint: 'http://localhost:20128/v1/chat/completions',
+    healthEndpoint: '/api/health-9router',
+    model: 'kr/claude-sonnet-4.5',
+    apiKey: 'sk-cb903db624680de0-f6w9ez-80933162',
+    timeoutMs: 40000
+  };
+
+  const historicoConversa = [];
+  let status9RouterOnline = false;
+
+  function obterConfig9R() {
+    try {
+      const salvo = localStorage.getItem('alcar_9router_config');
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        const cfg = Object.assign({}, DEFAULT_CONFIG_9R, parsed);
+        // Atualiza chaves antigas ou timeouts curtos salvos anteriormente
+        if (cfg.apiKey === '9router-local' || !cfg.apiKey) {
+          cfg.apiKey = DEFAULT_CONFIG_9R.apiKey;
+        }
+        if (!cfg.timeoutMs || cfg.timeoutMs < 30000) {
+          cfg.timeoutMs = DEFAULT_CONFIG_9R.timeoutMs;
+        }
+        return cfg;
+      }
+    } catch (_) {}
+    return Object.assign({}, DEFAULT_CONFIG_9R);
+  }
+
+  function salvarConfig9R(cfg) {
+    try {
+      localStorage.setItem('alcar_9router_config', JSON.stringify(cfg));
+    } catch (_) {}
+  }
+
+  async function verificarHealth9Router() {
+    const cfg = obterConfig9R();
+    if (cfg.modo === 'local') {
+      status9RouterOnline = false;
+      atualizarBadgeHeader();
+      return false;
+    }
+
+    // 1. Tenta probe via proxy do server local
+    try {
+      const res = await fetch(cfg.healthEndpoint, { signal: AbortSignal.timeout(1800) });
+      if (res.ok) {
+        const json = await res.json();
+        status9RouterOnline = (json.status === 'online');
+        atualizarBadgeHeader();
+        return status9RouterOnline;
+      }
+    } catch (_) {}
+
+    // 2. Tenta probe direto no 9router (caso executando via file:// ou porta customizada)
+    try {
+      const resDirect = await fetch('http://localhost:20128/v1/models', {
+        headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
+        signal: AbortSignal.timeout(1500)
+      });
+      status9RouterOnline = resDirect.ok;
+    } catch (_) {
+      status9RouterOnline = false;
+    }
+
+    atualizarBadgeHeader();
+    return status9RouterOnline;
+  }
+
+  function atualizarBadgeHeader(digitando = false) {
+    const statusEl = document.querySelector('#status-agente');
+    if (!statusEl) return;
+    if (digitando) {
+      statusEl.textContent = 'digitando...';
+      statusEl.className = 'digitando';
+      return;
+    }
+    statusEl.className = '';
+    const cfg = obterConfig9R();
+    if (cfg.modo === 'local') {
+      statusEl.innerHTML = 'online <span class="status-tag tag-local">Local</span>';
+    } else if (status9RouterOnline) {
+      statusEl.innerHTML = 'online <span class="status-tag tag-9router">9Router</span>';
+    } else {
+      statusEl.innerHTML = 'online <span class="status-tag tag-local">Local</span>';
+    }
+  }
+
+  function construirSystemPrompt() {
+    const fonte = obterDadosDW();
+    let resumoDados = 'Dados da Usina Alcar não carregados no momento.';
+
+    if (fonte && fonte.tipo === 'dw') {
+      const D = fonte.data;
+      const stock = (D.estoque_familia || []).find(r => r.familia === 'TOTAL') || {};
+      const clima = D.clima_atual || {};
+      const forn = (D.kpi_fornecedor || []).filter(r => r.janela === 'ATUAL').sort((a,b) => b.atraso_medio_dias - a.atraso_medio_dias)[0];
+      const criticos = (fonte.items || []).filter(i => i.risco === 'crítico' || i.risco === 'atenção').slice(0, 5);
+
+      resumoDados = `
+ESTADO ATUAL DA USINA ALCAR (Camada Ouro / Data Mart):
+- Data da Posição: ${D.meta?.data_posicao || 'Hoje'}
+- Itens em Risco: ${stock.itens_criticos || 23} críticos e ${stock.itens_atencao || 13} em atenção.
+- Compras Sugeridas Totais: ${formatarDinheiro(stock.valor_sugerido || 224356.40)}
+- Capital Imobilizado: ${formatarDinheiro(stock.capital_imobilizado || 3730000)} (Cobertura média: ${formatarNumero(stock.cobertura_dias || 42)} dias)
+- Maior Atraso de Fornecedor: ${forn ? `${forn.fornecedor} com atraso médio de ${formatarNumero(forn.atraso_medio_dias)} dias` : 'N/D'}
+- Clima Atual: ${clima.cenario || 'Chuvoso'} (${formatarNumero(clima.chuva_7d_mm || 48)} mm nos últimos 7 dias)
+- Top 5 Itens Críticos: ${criticos.map(i => `${i.cod} (${i.nome}): falta em ${i.dias_ruptura ?? 0} dias, saldo ${i.saldo}, compras ${formatarDinheiro(i.valor)}`).join('; ')}
+`;
+    } else if (fonte && fonte.tipo === 'legado') {
+      const crit = (fonte.items || []).filter(i => i.risco === 'crit');
+      const val = crit.reduce((s, i) => s + (i.valor || 0), 0);
+      resumoDados = `
+ESTADO ATUAL DA USINA ALCAR (Base Operacional):
+- Itens Críticos: ${crit.length} materiais em risco iminente de ruptura.
+- Valor Total em Compras Recomendadas: ${formatarDinheiro(val)}
+- Itens prioritários: ${crit.slice(0, 5).map(i => `${i.cod} (${i.nome}) - saldo ${i.saldo}`).join('; ')}
+`;
+    }
+
+    return `Você é o Assistente Especialista de Inteligência de Suprimentos e Estoques da Usina Alcar, um Sistema de Apoio à Decisão (SAD) desenvolvido para a disciplina de Inteligência Organizacional (2º Bimestre).
+
+SUA MISSÃO:
+Responder a analistas de almoxarifado, compradores e gestores com respostas objetivas, embasadas na metodologia matemática formal de gestão de estoques e nos dados reais da usina.
+
+METODOLOGIA MATEMÁTICA FORMAL:
+1. Estoque de Segurança (SS): SS = z · √[ (R + L)·σd² + d̄²·σL² ]
+   - Onde z é o fator de serviço (z=1,645 para 95%; z=2,326 para 99%), R é o período de revisão (7 dias), L é o Lead Time do fornecedor, d̄ e σd são a média e desvio padrão da demanda diária, σL o desvio do lead time.
+2. Ponto de Pedido (PP): PP = d̄ · (R + L) + SS
+3. Demanda Intermitente: Peças sobressalentes e de desgaste sofrem com intermitência. O método de Croston (1972) desacopla tamanho da saída e intervalo entre saídas; a variante SBA (Syntetos-Boylan, 2005) multiplica a previsão por (1 - α/2) para eliminar o viés sistemático de superestimação.
+4. Métrica WAPE: WAPE = Σ |Real - Previsão| / Σ Real. Superior ao MAPE porque não divide por zero em semanas com demanda nula.
+5. OTIF (On-Time In-Full): Avalia pedidos que chegaram dentro do prazo contratual e com quantidade 100% correta.
+6. Governança e LGPD: O SAD lê apenas a Camada Ouro (Data Mart) de forma somente leitura, com pseudonimização SHA-256 e externalização de conhecimento (modelo SECI de Nonaka & Takeuchi).
+7. Efeito Clima/Safra: Chuva forte paralisa colheita no campo, reduzindo o desgaste mecânico imediato, mas concentrando manutenções preventivas de entressafra.
+
+${resumoDados}
+
+INSTRUÇÕES DE FORMATAÇÃO:
+- Seja direto, profissional e didático.
+- Use negrito para valores numéricos e termos técnicos essenciais.
+- Use listas curtas ou tópicos quando listar materiais ou fatores.
+- As respostas serão renderizadas em balões de chat estilo WhatsApp.
+- Você já possui todos os dados necessários da usina no resumo acima. NUNCA execute ferramentas, buscas ou emita tags XML. Responda diretamente em texto fluído em português.`;
+  }
+
+  function formatarTabelasMarkdown(texto) {
+    const tableRegex = /((?:^[ \t]*\|[^\n]+\|[ \t]*\r?\n)(?:^[ \t]*\|[ \t:|-]+[ \t]*\r?\n)(?:^[ \t]*\|[^\n]+\|[ \t]*(?:\r?\n|$))+)/gm;
+    return texto.replace(tableRegex, match => {
+      const linhas = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (linhas.length < 2) return match;
+
+      const headerCells = linhas[0].split('|').slice(1, -1).map(c => c.trim());
+      const bodyRows = linhas.slice(2).map(r => r.split('|').slice(1, -1).map(c => c.trim()));
+
+      const ths = headerCells.map(h => `<th>${h}</th>`).join('');
+      const trs = bodyRows.map(row => `<tr>${row.map(c => `<td>${c}</td>`).join('')}</tr>`).join('');
+
+      return `\n\n<div class="tabela-chat-scroll"><table class="tabela-chat"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>\n\n`;
+    });
+  }
+
+  function formatarRespostaLLM(txt) {
+    if (!txt) return '';
+    let s = txt
+      .replace(/<(search_project|list_directory|read_file|execute_command|write_file)[\s\S]*?<\/\1>/gi, '')
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // 1. Processa blocos matemáticos $$...$$ e código ```...```
+    s = s.replace(/```([\s\S]*?)```/g, '<div class="formula-box"><code>$1</code></div>');
+    s = s.replace(/\$\$([\s\S]*?)\$\$/g, '<div class="formula-box"><code>$1</code></div>');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\$([^\$\n]+)\$/g, '<code>$1</code>');
+
+    // 2. Converte tabelas Markdown em HTML com scroll horizontal
+    s = formatarTabelasMarkdown(s);
+
+    // 3. Negrito e Itálico
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    s = s.replace(/\*([^*]+)\*/g, '<i>$1</i>');
+
+    // 4. Autolink de códigos de materiais da usina (ex: AL-000001) para botão interativo
+    s = s.replace(/\b(AL-\d{6})\b/g, '<button class="btn-acao-chat" data-item="$1" type="button" title="Ver detalhes de $1">🔍 $1</button>');
+
+    // 5. Listas com marcadores
+    s = s.replace(/^\s*[-*]\s+(.+)$/gm, '<li>$1</li>');
+    s = s.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+    s = s.replace(/<\/ul>\s*<ul>/g, '');
+
+    // 6. Parágrafos preservando containers especiais
+    const paras = s.split(/\n{2,}/).map(p => {
+      p = p.trim();
+      if (!p) return '';
+      if (p.startsWith('<ul') || p.startsWith('<div') || p.startsWith('<table')) return p;
+      return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+    }).filter(Boolean);
+
+    return paras.join('');
+  }
+
+  async function chamar9Router(pergunta, historico = []) {
+    const cfg = obterConfig9R();
+    if (cfg.modo === 'local') {
+      throw new Error('Modo local forçado pelo usuário');
+    }
+
+    const systemPrompt = construirSystemPrompt();
+    const historicoPrevio = historico.slice(-6).filter(m => m.content !== pergunta);
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...historicoPrevio,
+      { role: 'user', content: pergunta }
+    ];
+
+    const body = {
+      model: cfg.model,
+      messages: messages,
+      temperature: 0.3,
+      max_tokens: 650,
+      stream: false
+    };
+
+    const inicio = performance.now();
+    let res;
+
+    try {
+      res = await fetch(cfg.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.apiKey}`
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(cfg.timeoutMs)
+      });
+    } catch (errProxy) {
+      res = await fetch(cfg.directEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.apiKey}`
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(cfg.timeoutMs)
+      });
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`9Router HTTP ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json();
+    const latencia = Math.round(performance.now() - inicio);
+    const content = data.choices?.[0]?.message?.content || '';
+    const modeloUsado = data.model || cfg.model;
+
+    if (!content.trim()) {
+      throw new Error('Resposta vazia do 9Router');
+    }
+
+    return {
+      texto: content,
+      modelo: modeloUsado,
+      latencia: latencia
+    };
+  }
+
+  function garantirModalConfig() {
+    let modal = document.querySelector('#dg-config-agente');
+    if (!modal) {
+      modal = document.createElement('dialog');
+      modal.id = 'dg-config-agente';
+      modal.innerHTML = `
+        <div class="config-header">
+          <h3>⚙️ Configuração do 9Router</h3>
+          <button type="button" class="config-fechar" id="fx-config-agente" aria-label="Fechar configurações">✕</button>
+        </div>
+        <div class="config-corpo">
+          <div class="config-status-card ${status9RouterOnline ? 'online' : 'offline'}" id="card-status-9r">
+            <span>●</span>
+            <span id="txt-status-9r">${status9RouterOnline ? '9Router conectado em localhost:20128' : '9Router desconectado (usando Motor Local)'}</span>
+          </div>
+
+          <div class="config-campo">
+            <label for="cfg-modo">Modo de Operação</label>
+            <select id="cfg-modo">
+              <option value="auto">Automático (9Router com Fallback Local)</option>
+              <option value="local">Forçar Motor Local (Offline)</option>
+            </select>
+          </div>
+
+          <div class="config-campo">
+            <label for="cfg-model">Modelo do 9Router</label>
+            <input id="cfg-model" placeholder="ex: kr/claude-sonnet-4.5 ou open-code-free">
+            <small style="color:#667781;font-size:11px">Alias do modelo configurado no dashboard do 9Router.</small>
+          </div>
+
+          <div class="config-campo">
+            <label for="cfg-endpoint">Endpoint do Proxy</label>
+            <input id="cfg-endpoint" placeholder="/api/chat">
+          </div>
+
+          <div class="config-campo">
+            <label for="cfg-apikey">Chave de API (Opcional)</label>
+            <input id="cfg-apikey" type="password" placeholder="9router-local">
+          </div>
+
+          <div class="config-acoes">
+            <button type="button" class="btn-testar-9r" id="bt-testar-9r">Testar Conexão</button>
+            <button type="button" class="btn-salvar-9r" id="bt-salvar-9r">Salvar</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelector('#fx-config-agente').onclick = () => modal.close();
+
+      modal.querySelector('#bt-testar-9r').onclick = async () => {
+        const txt = modal.querySelector('#txt-status-9r');
+        const card = modal.querySelector('#card-status-9r');
+        txt.textContent = 'Verificando conexão com localhost:20128...';
+        card.className = 'config-status-card';
+        const online = await verificarHealth9Router();
+        if (online) {
+          card.className = 'config-status-card online';
+          txt.textContent = 'Conexão ativa! 9Router respondendo.';
+        } else {
+          card.className = 'config-status-card offline';
+          txt.textContent = '9Router não detectado. Inicie com "npx 9router" no terminal.';
+        }
+      };
+
+      modal.querySelector('#bt-salvar-9r').onclick = () => {
+        const cfg = obterConfig9R();
+        cfg.modo = modal.querySelector('#cfg-modo').value;
+        cfg.model = modal.querySelector('#cfg-model').value.trim() || DEFAULT_CONFIG_9R.model;
+        cfg.endpoint = modal.querySelector('#cfg-endpoint').value.trim() || DEFAULT_CONFIG_9R.endpoint;
+        cfg.apiKey = modal.querySelector('#cfg-apikey').value.trim() || DEFAULT_CONFIG_9R.apiKey;
+        salvarConfig9R(cfg);
+        verificarHealth9Router();
+        modal.close();
+      };
+    }
+
+    const cfg = obterConfig9R();
+    modal.querySelector('#cfg-modo').value = cfg.modo;
+    modal.querySelector('#cfg-model').value = cfg.model;
+    modal.querySelector('#cfg-endpoint').value = cfg.endpoint;
+    modal.querySelector('#cfg-apikey').value = cfg.apiKey;
+    const card = modal.querySelector('#card-status-9r');
+    const txt = modal.querySelector('#txt-status-9r');
+    card.className = `config-status-card ${status9RouterOnline ? 'online' : 'offline'}`;
+    txt.textContent = status9RouterOnline ? '9Router conectado em localhost:20128' : '9Router desconectado (usando Motor Local)';
+
+    return modal;
+  }
+
+  // ============================================================
+  // 5. INTERFACE E CONTROLES DO CHAT
   // ============================================================
   const SUGESTOES = [
     'O que pede atenção hoje na usina?',
@@ -472,8 +838,20 @@
     const abrirBtn = document.querySelector('#bt-agente');
     const modal = document.querySelector('#dg-agente');
     const fecharBtn = document.querySelector('#fx-agente');
+    const configBtn = document.querySelector('#bt-config-agente');
 
     if (!chat || !form) return;
+
+    // Checagem de conectividade do 9Router na inicialização
+    verificarHealth9Router();
+
+    // Botão de configurações
+    if (configBtn) {
+      configBtn.onclick = () => {
+        const dlg = garantirModalConfig();
+        dlg.showModal();
+      };
+    }
 
     // Renderiza chips de sugestão rápida (ocultos por padrão para não obstruir a tela)
     if (sugs) {
@@ -513,7 +891,7 @@
         <div class="chat-data-badge">HOJE</div>
         <div class="msg-a">
           <p>👋 <b>Olá! Sou o assistente de IA da Usina Alcar.</b></p>
-          <p>Posso tirar dúvidas sobre a <b>metodologia de estoque</b> (fórmulas, Croston, WAPE) ou analisar <b>dados reais da usina</b> (itens críticos, atrasos e clima).</p>
+          <p>Posso tirar dúvidas sobre a <b>metodologia de estoque</b> ou analisar <b>dados reais da usina</b>.</p>
           <p style="margin:8px 0 4px;font-weight:600;color:#54656f;font-size:12px">💡 Perguntas sugeridas para começar:</p>
           <div class="chat-sugestoes-iniciais">
             <button type="button" class="chip-chat-msg" data-pergunta="O que pede atenção hoje na usina?">🚨 O que pede atenção hoje na usina?</button>
@@ -544,6 +922,7 @@
         modal.hidden = !modal.hidden;
         abrirBtn.setAttribute('aria-expanded', String(!modal.hidden));
         if (!modal.hidden) {
+          verificarHealth9Router();
           const input = form.querySelector('input');
           input?.focus();
         }
@@ -560,10 +939,17 @@
 
     // Fecha com tecla ESC
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && modal && !modal.hidden) {
-        modal.hidden = true;
-        abrirBtn?.setAttribute('aria-expanded', 'false');
-        abrirBtn?.focus();
+      if (e.key === 'Escape') {
+        const dlgConfig = document.querySelector('#dg-config-agente');
+        if (dlgConfig && dlgConfig.open) {
+          dlgConfig.close();
+          return;
+        }
+        if (modal && !modal.hidden) {
+          modal.hidden = true;
+          abrirBtn?.setAttribute('aria-expanded', 'false');
+          abrirBtn?.focus();
+        }
       }
     });
 
@@ -583,11 +969,8 @@
       // 1. Navegação para painéis ou âncoras
       const navTarget = btnAcao.dataset.nav;
       if (navTarget) {
-        // Dispara evento global para o dashboard ou interface capturar
         const ev = new CustomEvent('alcar:navegar', {detail: {target: navTarget}, bubbles: true});
         document.dispatchEvent(ev);
-
-        // Se houver elemento direto na página, tenta rolar até ele
         const el = document.querySelector(navTarget);
         if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'});
         return;
@@ -603,7 +986,7 @@
     };
   }
 
-  function enviarMensagem(texto) {
+  async function enviarMensagem(texto) {
     const chat = document.querySelector('#chat');
     const sugs = document.querySelector('#sugs');
     if (!chat) return;
@@ -628,47 +1011,63 @@
     chat.appendChild(divUser);
     chat.scrollTop = chat.scrollHeight;
 
-    // Atualiza status no cabeçalho do WhatsApp
-    const statusEl = document.querySelector('#status-agente');
-    if (statusEl) {
-      statusEl.textContent = 'digitando...';
-      statusEl.classList.add('digitando');
-    }
+    atualizarBadgeHeader(true);
 
     // Indicador visual de digitação (bouncing dots estilo WhatsApp)
     const typingBubble = document.createElement('div');
     typingBubble.className = 'msg-a typing-bubble';
     typingBubble.id = 'typing-bubble';
-    typingBubble.innerHTML = `<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>`;
+    typingBubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
     chat.appendChild(typingBubble);
     chat.scrollTop = chat.scrollHeight;
 
-    setTimeout(() => {
-      typingBubble.remove();
-      if (statusEl) {
-        statusEl.textContent = 'online';
-        statusEl.classList.remove('digitando');
-      }
+    historicoConversa.push({ role: 'user', content: texto });
+    if (historicoConversa.length > 20) {
+      historicoConversa.splice(0, historicoConversa.length - 20);
+    }
 
-      const resultado = processarPergunta(texto);
+    let respostaHtml = '';
+    let origemHtml = '';
+
+    try {
+      // 1. Tenta chamar o 9Router (LLM Real)
+      const res9R = await chamar9Router(texto, historicoConversa);
+      respostaHtml = formatarRespostaLLM(res9R.texto);
+      origemHtml = `<span class="badge-origem-9r">🤖 9Router · ${res9R.modelo} · ${res9R.latencia}ms</span>`;
+      status9RouterOnline = true;
+      historicoConversa.push({ role: 'assistant', content: res9R.texto });
+    } catch (err) {
+      // 2. Fallback automático para o motor determinístico local
+      status9RouterOnline = false;
+      const resultadoLocal = processarPergunta(texto);
+      respostaHtml = resultadoLocal.resposta;
+      origemHtml = `<span class="badge-origem-local">⚡ Motor Local Alcar (Fallback)</span> <small style="color:#667781">· ${resultadoLocal.origem}</small>`;
+      historicoConversa.push({ role: 'assistant', content: resultadoLocal.resposta.replace(/<[^>]+>/g, ' ') });
+    } finally {
+      typingBubble.remove();
+      atualizarBadgeHeader(false);
+
       const respHora = formatarHora();
       const divAgente = document.createElement('div');
       divAgente.className = 'msg-a';
       divAgente.innerHTML = `
-        ${resultado.resposta}
-        <div class="meta">Origem: <b>${resultado.origem}</b> · <code>${resultado.funcao}</code></div>
+        ${respostaHtml}
+        <div class="meta">${origemHtml}</div>
         <div class="msg-meta"><span class="msg-hora">${respHora}</span></div>
       `;
       chat.appendChild(divAgente);
       chat.scrollTop = chat.scrollHeight;
-    }, 450);
+    }
   }
 
   // Exposição global
   window.AgenteIA = {
     processar: processarPergunta,
     enviar: enviarMensagem,
-    init: inicializarChat
+    init: inicializarChat,
+    verificar9Router: verificarHealth9Router,
+    obterConfig: obterConfig9R,
+    salvarConfig: salvarConfig9R
   };
 
   // Auto-inicialização quando o DOM estiver pronto
@@ -678,4 +1077,3 @@
     inicializarChat();
   }
 })();
-

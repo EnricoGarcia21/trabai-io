@@ -24,12 +24,15 @@
           <span id="status-agente">online</span>
         </div>
       </div>
-      <button class="btn-fecha-chat" id="fx-agente" aria-label="Fechar conversa (Esc)">✕</button>
+      <div class="cab-chat-acoes">
+        <button class="btn-toggle-sugs-cab" id="bt-toggle-sugs" title="Perguntas sugeridas" aria-label="Ver perguntas sugeridas">💡</button>
+        <button class="btn-config-chat" id="bt-config-agente" title="Configurações do 9Router" aria-label="Configurações do 9Router">⚙️</button>
+        <button class="btn-fecha-chat" id="fx-agente" aria-label="Fechar conversa (Esc)">✕</button>
+      </div>
     </div>
     <div class="chat" id="chat" aria-live="polite" tabindex="0"></div>
     <div class="sugs" id="sugs" hidden></div>
     <form class="form-chat" id="form-chat">
-      <button class="btn-toggle-sugs" id="bt-toggle-sugs" type="button" title="Perguntas sugeridas" aria-label="Ver perguntas sugeridas">💡</button>
       <input id="q" aria-label="Mensagem para o agente" placeholder="Mensagem..." autocomplete="off">
       <button class="btn-enviar-chat" type="submit" aria-label="Enviar mensagem">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
